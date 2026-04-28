@@ -1,0 +1,7 @@
+package com.example.QueueSense.QueueSense.entity.type;
+
+public enum QueueStatus {
+    WAITING,
+    IN_PROGRESS,
+    COMPLETED
+}
