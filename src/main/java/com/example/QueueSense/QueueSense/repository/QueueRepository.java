@@ -14,15 +14,14 @@ public interface QueueRepository extends JpaRepository<QueueEntry, Long> {
     Optional<QueueEntry> findByAppointment(Appointment appointment);
 
 
-    // 🔥 1. Get full queue for a provider (ordered)
     List<QueueEntry> findByAppointment_Provider_IdOrderByPositionAsc(Long providerId);
 
 
-    // 🔥 2. Get queue entry for a specific user
+
     Optional<QueueEntry> findByAppointment_User_Id(Long userId);
 
 
-    // 🔥 3. Get queue entry by appointment (VERY IMPORTANT)
+
     Optional<QueueEntry> findByAppointment_Id(Long appointmentId);
 
     Optional<QueueEntry> findByAppointment_User_IdAndStatusIn(
@@ -30,24 +29,33 @@ public interface QueueRepository extends JpaRepository<QueueEntry, Long> {
             List<QueueStatus> statuses
     );
 
+    Optional<QueueEntry> findByAppointment_Provider_IdAndStatus(Long providerId, QueueStatus status);
 
 
-    // 🔥 5. Get all queue entries for a provider by status
     List<QueueEntry> findByAppointment_Provider_IdAndStatusOrderByPositionAsc(
             Long providerId,
             QueueStatus status
     );
 
 
-    // 🔥 6. Count queue size for a provider (better than global count)
+
     int countByAppointment_Provider_Id(Long providerId);
 
+    int countByAppointment_Provider_IdAndStatusIn(Long providerId, List<QueueStatus> statuses);
 
-    // 🔥 7. Get next patient in queue
+
+
     Optional<QueueEntry> findFirstByAppointment_Provider_IdAndStatusOrderByPositionAsc(
             Long providerId,
             QueueStatus status
     );
+
+    List<QueueEntry> findByAppointment_IdAndStatusIn(
+            Long appointmentId,
+            List<QueueStatus> statuses
+    );
+
+
 
 
 }

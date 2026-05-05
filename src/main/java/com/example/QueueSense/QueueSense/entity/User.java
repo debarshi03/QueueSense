@@ -41,7 +41,7 @@ public class User implements UserDetails {
     private String password;
 
     @Column(nullable = false,unique = true)
-    @Pattern(regexp = "^[0-9]{10}$") // for Indian phone
+    @Pattern(regexp = "^[0-9]{10}$")
     private String phone;
 
     @ElementCollection(fetch = FetchType.EAGER)
@@ -52,6 +52,9 @@ public class User implements UserDetails {
 
     @OneToMany(mappedBy = "user", cascade = {CascadeType.REMOVE}, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<Appointment> appointments=new ArrayList<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Notification> notifications= new ArrayList<>();
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

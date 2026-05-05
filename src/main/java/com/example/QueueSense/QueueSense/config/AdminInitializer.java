@@ -33,9 +33,9 @@ public class AdminInitializer {
 
             userRepository.save(admin);
 
-            System.out.println("✅ Admin user created successfully!");
+            System.out.println("Admin user created successfully!");
         } else {
-            System.out.println("⚡ Admin already exists");
+            System.out.println("Admin already exists");
         }
     }
 }

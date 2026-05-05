@@ -2,6 +2,8 @@ package com.example.QueueSense.QueueSense.entity.type;
 
 public enum AppointmentStatus {
     BOOKED,
+    IN_PROGRESS,
     CANCELLED,
-    COMPLETED
+    COMPLETED,
+    NO_SHOW
 }

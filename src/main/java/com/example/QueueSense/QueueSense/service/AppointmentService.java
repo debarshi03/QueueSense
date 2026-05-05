@@ -22,7 +22,10 @@ import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.ui.ModelMap;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 @Service
 @RequiredArgsConstructor
@@ -33,43 +36,187 @@ public class AppointmentService {
     private final ServiceProviderRepository serviceProviderRepository;
     private final QueueService queueService;
     private final QueueRepository queueRepository;
+    private final NotificationService notificationService;
 
 
-    public @Nullable AppointmentStatusResponseDto updateStatus(AppointmentStatusRequestDto appointmentStatusRequestDto) {
-        Appointment appointment = appointmentRepository.findById(appointmentStatusRequestDto.getAppointmentId())
-                .orElseThrow(() -> new EntityNotFoundException("Appointment not found"));
+//    public @Nullable AppointmentStatusResponseDto updateStatus(AppointmentStatusRequestDto appointmentStatusRequestDto) {
+//        Appointment appointment = appointmentRepository.findById(appointmentStatusRequestDto.getAppointmentId())
+//                .orElseThrow(() -> new EntityNotFoundException("Appointment not found"));
+//
+//        if (appointment.getStatus() == appointmentStatusRequestDto.getStatus()) {
+//            throw new IllegalArgumentException("Appointment already has status: " + appointmentStatusRequestDto.getStatus());
+//        }
+//
+//
+//        if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+//            QueueEntry queueEntry=queueRepository.findByAppointment(appointment)
+//                    .orElseThrow(()->new IllegalArgumentException("Cannot change status after completion"));
+//            queueEntry.setStatus(QueueStatus.COMPLETED);
+//            queueRepository.save(queueEntry);
+//
+//            queueService.recalculateQueue(appointment.getProvider().getAverageServiceTime());
+//        }
+//
+//        if (appointment.getStatus() == AppointmentStatus.IN_PROGRESS) {
+//            QueueEntry queueEntry=queueRepository.findByAppointment(appointment)
+//                    .orElseThrow(()->new IllegalArgumentException("Cannot change status after completion"));
+//            queueEntry.setStatus(QueueStatus.IN_PROGRESS);
+//            queueRepository.save(queueEntry);
+//
+//            queueService.recalculateQueue(appointment.getProvider().getAverageServiceTime());
+//        }
+//
+//
+//        if (appointment.getStatus() == AppointmentStatus.BOOKED &&
+//                appointmentStatusRequestDto.getStatus() != AppointmentStatus.COMPLETED) {
+//
+//            throw new IllegalArgumentException("Invalid status transition");
+//        }
+//        appointment.setStatus(appointmentStatusRequestDto.getStatus());
+//        appointmentRepository.save(appointment);
+//
+//
+//        notificationService.sendNotification(
+//                appointment.getUser(),
+//                "Your Appointment is Completed"
+//        );
+//
+//        AppointmentStatusResponseDto responseDto=new AppointmentStatusResponseDto();
+//        responseDto.setAppointmentId(appointment.getId());
+//        responseDto.setStatus(appointment.getStatus());
+//        responseDto.setMessage("Status is updated Successfully");
+//        responseDto.setUpdatedAt(LocalDateTime.now());
+//
+//        return responseDto;
+//    }
 
-        if (appointment.getStatus() == appointmentStatusRequestDto.getStatus()) {
-            throw new IllegalArgumentException("Appointment already has status: " + appointmentStatusRequestDto.getStatus());
+    public AppointmentStatusResponseDto updateStatus(AppointmentStatusRequestDto appointmentStatusRequestDto){
+        Appointment appointment=appointmentRepository.findById(appointmentStatusRequestDto.getAppointmentId())
+                .orElseThrow(()->new IllegalArgumentException("Appointment not found"));
+
+        AppointmentStatus oldStatus=appointment.getStatus();
+        AppointmentStatus newStatus=appointmentStatusRequestDto.getStatus();
+
+        if(oldStatus==newStatus){
+            throw new IllegalArgumentException("Appointment already has Status"+ newStatus);
         }
 
-
-        if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
-            QueueEntry queueEntry=queueRepository.findByAppointment(appointment)
-                    .orElseThrow(()->new IllegalArgumentException("Cannot change status after completion"));
-            queueEntry.setStatus(QueueStatus.COMPLETED);
-            queueRepository.save(queueEntry);
-
-            queueService.recalculateQueue(appointment.getProvider().getAverageServiceTime());
+        if(oldStatus==AppointmentStatus.COMPLETED){
+            throw new IllegalArgumentException("Appointment status can not be changed after completion");
         }
 
+        Long providerId= appointment.getProvider().getId();
+        int avgTime= appointment.getProvider().getAverageServiceTime();
 
-        if (appointment.getStatus() == AppointmentStatus.BOOKED &&
-                appointmentStatusRequestDto.getStatus() != AppointmentStatus.COMPLETED) {
+        QueueEntry queueEntry=queueRepository.findByAppointment(appointment)
+                .orElseThrow(()-> new IllegalArgumentException("Appointment not found"));
 
-            throw new IllegalArgumentException("Invalid status transition");
-        }
         appointment.setStatus(appointmentStatusRequestDto.getStatus());
         appointmentRepository.save(appointment);
 
-        AppointmentStatusResponseDto responseDto=new AppointmentStatusResponseDto();
-        responseDto.setAppointmentId(appointment.getId());
-        responseDto.setStatus(appointment.getStatus());
-        responseDto.setMessage("Status is updated Successfully");
-        responseDto.setUpdatedAt(LocalDateTime.now());
+        if(newStatus==AppointmentStatus.COMPLETED) {
+            queueEntry.setStatus(QueueStatus.COMPLETED);
+            queueEntry.setEndTime(LocalDateTime.now());
+            queueRepository.save(queueEntry);
 
-        return responseDto;
+            notificationService.sendNotification(
+                    appointment.getUser(),
+                    "Your apointment is completed"
+            );
+
+
+            List<QueueEntry> waiting = queueRepository
+                    .findByAppointment_Provider_IdAndStatusOrderByPositionAsc(
+                            providerId,
+                            QueueStatus.WAITING
+                    );
+
+            if (!waiting.isEmpty()) {
+                QueueEntry next = waiting.get(0);
+                next.setStatus(QueueStatus.IN_PROGRESS);
+                queueRepository.save(next);
+
+                notificationService.sendNotification(
+                        next.getAppointment().getUser(),
+                        "Now it's your turn"
+                );
+            }
+            queueService.recalculateQueue(providerId,avgTime);
+        }
+
+        else if(newStatus==AppointmentStatus.IN_PROGRESS){
+            queueEntry.setStatus(QueueStatus.IN_PROGRESS);
+            queueEntry.setStartTime(LocalDateTime.now());
+            queueRepository.save(queueEntry);
+            notificationService.sendNotification(
+                    appointment.getUser(),
+                    "Your Appointment has started"
+            );
+
+            if (queueEntry.getStartTime()!=null && queueEntry.getEndTime()!=null){
+                long actualTime= Duration.between(
+                        queueEntry.getStartTime(),
+                        queueEntry.getEndTime()
+                ).toMinutes();
+
+                ServiceProvider provider=appointment.getProvider();
+                int oldAvgTime=provider.getAverageServiceTime();
+                int newAvgTime=(oldAvgTime+ (int) actualTime)/2;
+
+                provider.setAverageServiceTime(newAvgTime);
+                serviceProviderRepository.save(provider);
+            }
+        }
+
+        else if (newStatus == AppointmentStatus.NO_SHOW) {
+
+            queueEntry.setStatus(QueueStatus.NO_SHOW);
+            queueRepository.save(queueEntry);
+
+            List<QueueEntry> waitList =
+                    queueRepository.findByAppointment_Provider_IdAndStatusOrderByPositionAsc(
+                            providerId,
+                            QueueStatus.WAITING
+                    );
+
+
+            if (!waitList.isEmpty()) {
+
+                QueueEntry next = waitList.get(0);
+
+                next.setStatus(QueueStatus.IN_PROGRESS);
+                next.setStartTime(LocalDateTime.now());
+
+                queueRepository.save(next);
+
+
+                notificationService.sendNotification(
+                        next.getAppointment().getUser(),
+                        "Previous user missed turn. It's your turn now"
+                );
+            }
+
+
+            queueService.recalculateQueue(providerId, avgTime);
+
+
+            notificationService.sendNotification(
+                    appointment.getUser(),
+                    "You missed your appointment (NO SHOW)"
+            );
+        }
+
+        AppointmentStatusResponseDto appointmentStatusResponseDto= new AppointmentStatusResponseDto();
+        appointmentStatusResponseDto.setAppointmentId(appointment.getId());
+        appointmentStatusResponseDto.setStatus(appointment.getStatus());
+        appointmentStatusResponseDto.setMessage("Status updated");
+        appointmentStatusResponseDto.setUpdatedAt(LocalDateTime.now());
+
+        return appointmentStatusResponseDto;
+
+
     }
+
 
     public @Nullable AppointmentResponseDto createNewAppointment(CreateAppointmentRequestDto createAppointmentRequestDto) {
         Long providerId=createAppointmentRequestDto.getProviderId();
@@ -89,6 +236,11 @@ public class AppointmentService {
 
         appointment = appointmentRepository.save(appointment);
 
+        notificationService.sendNotification(
+                user,
+                "Appointment is Created"
+        );
+
         queueService.addToQueue(appointment,serviceProvider.getAverageServiceTime());
 
         return modelMapper.map(appointment, AppointmentResponseDto.class);
@@ -96,4 +248,92 @@ public class AppointmentService {
 
 
     }
+
+    public @Nullable AppointmentStatusResponseDto cancelAppointment(AppointmentStatusRequestDto appointmentStatusRequestDto) {
+        Appointment appointment=appointmentRepository.findById(appointmentStatusRequestDto.getAppointmentId())
+                .orElseThrow(()-> new IllegalArgumentException("Appointment not found with id"+ appointmentStatusRequestDto.getAppointmentId()));
+
+        AppointmentStatus oldStatus= appointment.getStatus();
+        AppointmentStatus newStatus= appointmentStatusRequestDto.getStatus();
+
+        if (newStatus != AppointmentStatus.CANCELLED) {
+            throw new IllegalArgumentException("Only CANCELLED is allowed here");
+        }
+
+        if ( oldStatus == newStatus ){
+            throw new IllegalArgumentException("Appointment already has started " + newStatus);
+        }
+
+        if (oldStatus== AppointmentStatus.COMPLETED){
+            throw new IllegalArgumentException("You can't cancel your appointment because your appointment is alreadt completed");
+
+        }
+
+        if (oldStatus == AppointmentStatus.IN_PROGRESS) {
+            throw new IllegalArgumentException("Cannot cancel once service has started");
+        }
+
+        Long providerId= appointment.getProvider().getId();
+        int avgTime= appointment.getProvider().getAverageServiceTime();
+
+        appointment.setStatus(appointmentStatusRequestDto.getStatus());
+        appointmentRepository.save(appointment);
+
+        QueueEntry queueEntry= queueRepository.findByAppointment(appointment)
+                .orElseThrow(()-> new IllegalArgumentException("Appointment not found"));
+
+        if(newStatus==AppointmentStatus.CANCELLED){
+            boolean wasInprogress=queueEntry.getStatus()==QueueStatus.IN_PROGRESS;
+            queueEntry.setStatus(QueueStatus.CANCELLED);
+            queueRepository.save(queueEntry);
+
+            if(wasInprogress){
+                List<QueueEntry> waitList= queueRepository.findByAppointment_Provider_IdAndStatusOrderByPositionAsc(
+                        providerId,
+                        QueueStatus.WAITING
+
+                );
+
+                if (!waitList.isEmpty()){
+                    QueueEntry next=waitList.get(0);
+                    next.setStatus(QueueStatus.IN_PROGRESS);
+                    next.setStartTime(LocalDateTime.now());
+                    queueRepository.save(next);
+
+                    notificationService.sendNotification(
+                            next.getAppointment().getUser(),
+                            "It's your turn now"
+                    );
+                }
+
+            }
+
+            queueService.recalculateQueue(providerId, avgTime);
+
+            notificationService.sendNotification(
+                    appointment.getUser(),
+                    "Your appointment is cancelled"
+            );
+        }
+        AppointmentStatusResponseDto responseDto=new AppointmentStatusResponseDto();
+        responseDto.setAppointmentId(appointment.getId());
+        responseDto.setMessage("Status Updated");
+        responseDto.setStatus(appointmentStatusRequestDto.getStatus());
+        responseDto.setUpdatedAt(LocalDateTime.now());
+        return responseDto;
+    }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,6 +1,7 @@
 package com.example.QueueSense.QueueSense.service;
 
 import com.example.QueueSense.QueueSense.dto.AppointmentResponseDto;
+import com.example.QueueSense.QueueSense.entity.Appointment;
 import com.example.QueueSense.QueueSense.repository.AppointmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.aspectj.apache.bcel.classfile.Module;
@@ -20,6 +21,7 @@ public class UserService {
 
 
     public @Nullable List<AppointmentResponseDto> getAllAppointments(Long id) {
+
         return appointmentRepository.findByUserId(id)
                 .stream()
                 .map(appointment -> modelMapper.map(appointment, AppointmentResponseDto.class))

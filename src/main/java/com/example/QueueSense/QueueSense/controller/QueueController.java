@@ -27,14 +27,14 @@ public class QueueController {
         return ResponseEntity.ok(queueService.getQueueByProvider(user.getId()));
     }
 
-    // 🔥 2. Get user's queue status
+
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<QueueResponseDto>> getUserQueue( ){
         User user=(User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return ResponseEntity.ok(queueService.getUserQueue(user.getId()));
     }
 
-//    // 🔥 3. Get specific queue entry
+
 //    @GetMapping("/{queueId}")
 //    public QueueResponseDto getQueueById(@PathVariable Long queueId) {
 //        return queueService.getQueueById(queueId);

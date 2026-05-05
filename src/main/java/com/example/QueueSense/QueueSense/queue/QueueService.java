@@ -1,13 +1,13 @@
 package com.example.QueueSense.QueueSense.queue;
 
 import com.example.QueueSense.QueueSense.dto.QueueResponseDto;
+import com.example.QueueSense.QueueSense.dto.WaitTimeResponseDto;
 import com.example.QueueSense.QueueSense.entity.Appointment;
 import com.example.QueueSense.QueueSense.entity.QueueEntry;
-import com.example.QueueSense.QueueSense.entity.ServiceProvider;
+import com.example.QueueSense.QueueSense.entity.User;
 import com.example.QueueSense.QueueSense.entity.type.QueueStatus;
-import com.example.QueueSense.QueueSense.repository.AppointmentRepository;
 import com.example.QueueSense.QueueSense.repository.QueueRepository;
-import com.example.QueueSense.QueueSense.repository.ServiceProviderRepository;
+import com.example.QueueSense.QueueSense.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.modelmapper.ModelMapper;
@@ -18,67 +18,107 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class QueueService {
-    private final QueueRepository queueRepository;
-    private final AppointmentRepository appointmentRepository;
-    private final ServiceProviderRepository serviceProviderRepository;
-    private final ModelMapper modelMapper;
 
-    public QueueEntry addToQueue(Appointment appointment, int avgTime){
-        int position = queueRepository.countByAppointment_Provider_Id(appointment.getProvider().getId()) + 1;
-        QueueEntry queueEntry=QueueEntry.builder()
+    private final QueueRepository queueRepository;
+    private final ModelMapper modelMapper;
+    private final NotificationService notificationService;
+
+    public QueueEntry addToQueue(Appointment appointment, int avgTime) {
+
+        Long providerId = appointment.getProvider().getId();
+
+        int activeCount = queueRepository
+                .countByAppointment_Provider_IdAndStatusIn(
+                        providerId,
+                        List.of(QueueStatus.WAITING, QueueStatus.IN_PROGRESS)
+                );
+
+        int position = activeCount + 1;
+
+        QueueStatus status = (position == 1)
+                ? QueueStatus.IN_PROGRESS
+                : QueueStatus.WAITING;
+
+        QueueEntry entry = QueueEntry.builder()
                 .appointment(appointment)
                 .position(position)
-                .estimatedWaitTime(position*avgTime)
-                .status(QueueStatus.WAITING)
+                .estimatedWaitTime((position - 1) * avgTime)
+                .status(status)
+                .notified(false)
                 .build();
 
-        return queueEntry;
+        entry = queueRepository.save(entry);
+
+        User user = appointment.getUser();
+
+        notificationService.sendNotification(
+                user,
+                "You have been added to the queue. Position: " + position
+        );
+
+        if (status == QueueStatus.IN_PROGRESS) {
+            notificationService.sendNotification(
+                    user,
+                    "It's your turn now"
+            );
+        }
+
+        return entry;
     }
 
-    public void recalculateQueue(int avgTime) {
+    public void recalculateQueue(Long providerId, int avgTime) {
 
-        List<QueueEntry> list = queueRepository.findByStatusOrderByPositionAsc(QueueStatus.WAITING);
+        List<QueueEntry> list = queueRepository
+                .findByAppointment_Provider_IdOrderByPositionAsc(providerId);
 
         int pos = 1;
 
         for (QueueEntry q : list) {
-            q.setPosition(pos);
-            q.setEstimatedWaitTime(pos * avgTime);
-            pos++;
+
+            if (q.getStatus() != QueueStatus.COMPLETED) {
+
+                q.setPosition(pos);
+                q.setEstimatedWaitTime((pos - 1) * avgTime);
+
+                if (q.getStatus() == QueueStatus.WAITING &&
+                        pos <= 2 &&
+                        !Boolean.TRUE.equals(q.getNotified())) {
+
+                    notificationService.sendNotification(
+                            q.getAppointment().getUser(),
+                            "Your turn is coming soon"
+                    );
+
+                    q.setNotified(true);
+                }
+
+                pos++;
+            }
         }
 
         queueRepository.saveAll(list);
     }
 
-    public List<QueueResponseDto> getQueueByProvider(Long id) {
-        return queueRepository.findByAppointment_Provider_IdOrderByPositionAsc(id)
+
+    public List<QueueResponseDto> getQueueByProvider(Long providerId) {
+
+        return queueRepository
+                .findByAppointment_Provider_IdOrderByPositionAsc(providerId)
                 .stream()
-                .map(queueEntry ->{
-                    QueueResponseDto dto=modelMapper.map(queueEntry, QueueResponseDto.class);
-                    dto.setAppointmentId(queueEntry.getAppointment().getId());
-                    dto.setStatus(queueEntry.getStatus().name());
+                .map(entry -> {
+                    QueueResponseDto dto = modelMapper.map(entry, QueueResponseDto.class);
+                    dto.setAppointmentId(entry.getAppointment().getId());
+                    dto.setStatus(entry.getStatus().name());
                     return dto;
-                        })
+                })
                 .toList();
     }
 
-//    public @Nullable List<QueueResponseDto> getUserQueue(Long id) {
-//        return queueRepository.findByAppointment_User_Id(id)
-//                .stream()
-//                .map(queueEntry -> {
-//                    QueueResponseDto dto=modelMapper.map(queueEntry, QueueResponseDto.class);
-//                    dto.setAppointmentId(queueEntry.getAppointment().getId());
-//                    dto.setStatus((queueEntry.getStatus().name()));
-//                    return dto;
-//                        })
-//                .toList();
-//    }
-
-    public List<QueueResponseDto> getUserQueue(Long id) {
+    public List<QueueResponseDto> getUserQueue(Long userId) {
 
         QueueEntry entry = queueRepository
                 .findByAppointment_User_IdAndStatusIn(
-                     id,
+                        userId,
                         List.of(QueueStatus.WAITING, QueueStatus.IN_PROGRESS)
                 )
                 .orElseThrow(() -> new RuntimeException("No active queue found"));
@@ -88,5 +128,25 @@ public class QueueService {
         dto.setStatus(entry.getStatus().name());
 
         return List.of(dto);
+    }
+
+    public WaitTimeResponseDto getWaitTime(Long appointmentId, Long id) {
+        QueueEntry entry= (QueueEntry) queueRepository.findByAppointment_IdAndStatusIn(
+                appointmentId,
+                List.of(QueueStatus.WAITING,QueueStatus.IN_PROGRESS)
+        );
+
+        if(!entry.getAppointment().getUser().getId().equals(id)){
+            throw new RuntimeException("Unauthorized Acsess");
+        }
+
+        int avgTime=entry.getAppointment().getProvider().getAverageServiceTime();
+        int waitTime=(entry.getPosition()-1)*avgTime;
+
+        WaitTimeResponseDto responseDto= new WaitTimeResponseDto();
+        responseDto.setWaitTime(waitTime);
+        responseDto.setPosition(entry.getPosition());
+
+        return responseDto;
     }
 }

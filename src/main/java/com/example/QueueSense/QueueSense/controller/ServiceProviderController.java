@@ -26,9 +26,9 @@ public class ServiceProviderController {
         return ResponseEntity.ok(appointmentService.updateStatus(appointmentStatusRequestDto));
     }
 
-//    @GetMapping("/allAppointments")
-//    public ResponseEntity<List<AppointmentResponseDto>> getAllAppointments(){
-//        User user=(User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-//        return ResponseEntity.of(serviceProviderService.getAllAppointments(user.getId()));
-//    }
+    @GetMapping("/allAppointments")
+    public ResponseEntity<List<AppointmentResponseDto>> getAllAppointments(){
+        User user=(User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return ResponseEntity.ok(serviceProviderService.getAllAppointments(user.getId()));
+    }
 }
