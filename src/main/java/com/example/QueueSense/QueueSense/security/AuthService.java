@@ -4,8 +4,10 @@ import com.example.QueueSense.QueueSense.dto.LoginRequestDto;
 import com.example.QueueSense.QueueSense.dto.LoginResponseDto;
 import com.example.QueueSense.QueueSense.dto.SignupRequestDto;
 import com.example.QueueSense.QueueSense.dto.SignupResponseDto;
+import com.example.QueueSense.QueueSense.entity.BlacklistedToken;
 import com.example.QueueSense.QueueSense.entity.User;
 import com.example.QueueSense.QueueSense.entity.type.RoleType;
+import com.example.QueueSense.QueueSense.repository.BlacklistedTokenRepository;
 import com.example.QueueSense.QueueSense.repository.UserRepository;
 import com.example.QueueSense.QueueSense.util.AuthUtil;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final AuthUtil authUtil;
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
 
     public SignupResponseDto signup(SignupRequestDto signupRequestDto) {
         User user = (User) userRepository.findByUsername(signupRequestDto.getUsername()).orElse(null);
@@ -50,5 +53,16 @@ public class AuthService {
         User user= (User) authentication.getPrincipal();
         String token=authUtil.ganerateAccessToken(user);
         return new LoginResponseDto(token,user.getId());
+    }
+
+    public void logout(String token){
+
+        BlacklistedToken blacklistedToken = BlacklistedToken.builder()
+                        .token(token)
+                        .build();
+
+        blacklistedTokenRepository.save(
+                blacklistedToken
+        );
     }
 }

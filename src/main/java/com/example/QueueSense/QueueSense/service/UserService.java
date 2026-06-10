@@ -27,4 +27,18 @@ public class UserService {
                 .map(appointment -> modelMapper.map(appointment, AppointmentResponseDto.class))
                 .toList();
     }
+
+    public @Nullable AppointmentResponseDto getAppointment(Long id, Long appointmentId) {
+        Appointment appointment=appointmentRepository
+                .findByIdAndUser_Id(
+                        appointmentId,
+                        id
+                ).orElseThrow(()->
+                        new RuntimeException(
+                                "Appointment not found"
+                        )
+                );
+
+        return modelMapper.map(appointment, AppointmentResponseDto.class);
+    }
 }

@@ -2,12 +2,14 @@ package com.example.QueueSense.QueueSense.queue;
 
 import com.example.QueueSense.QueueSense.dto.QueueResponseDto;
 import com.example.QueueSense.QueueSense.dto.WaitTimeResponseDto;
+import com.example.QueueSense.QueueSense.dto.WebSocketQueueDto;
 import com.example.QueueSense.QueueSense.entity.Appointment;
 import com.example.QueueSense.QueueSense.entity.QueueEntry;
 import com.example.QueueSense.QueueSense.entity.User;
 import com.example.QueueSense.QueueSense.entity.type.QueueStatus;
 import com.example.QueueSense.QueueSense.repository.QueueRepository;
 import com.example.QueueSense.QueueSense.service.NotificationService;
+import com.example.QueueSense.QueueSense.service.WebSocketService;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.modelmapper.ModelMapper;
@@ -22,6 +24,7 @@ public class QueueService {
     private final QueueRepository queueRepository;
     private final ModelMapper modelMapper;
     private final NotificationService notificationService;
+    private final WebSocketService webSocketService;
 
     public QueueEntry addToQueue(Appointment appointment, int avgTime) {
 
@@ -92,6 +95,14 @@ public class QueueService {
                     q.setNotified(true);
                 }
 
+                WebSocketQueueDto dto=WebSocketQueueDto.builder()
+                        .appointmentId(q.getAppointment().getId())
+                        .position(q.getPosition())
+                        .estimatedWaitTime(q.getEstimatedWaitTime())
+                        .status(q.getStatus().name())
+                        .build();
+
+                webSocketService.sendQueueUpdate(providerId,dto);
                 pos++;
             }
         }
@@ -131,10 +142,10 @@ public class QueueService {
     }
 
     public WaitTimeResponseDto getWaitTime(Long appointmentId, Long id) {
-        QueueEntry entry= (QueueEntry) queueRepository.findByAppointment_IdAndStatusIn(
+        QueueEntry entry=queueRepository.findByAppointment_IdAndStatusIn(
                 appointmentId,
                 List.of(QueueStatus.WAITING,QueueStatus.IN_PROGRESS)
-        );
+        ).orElseThrow(() -> new RuntimeException("Queue entry not found"));
 
         if(!entry.getAppointment().getUser().getId().equals(id)){
             throw new RuntimeException("Unauthorized Acsess");

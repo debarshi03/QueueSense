@@ -26,6 +26,6 @@ public class SignupRequestDto {
     private String password;
 
     @NotBlank
-    @Pattern(regexp = "^[0-9]{10}$") // for Indian phone
+    @Pattern(regexp = "^[0-9]{10}$")
     private String phone;
 }

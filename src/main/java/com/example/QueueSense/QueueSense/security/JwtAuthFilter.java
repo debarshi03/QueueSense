@@ -1,6 +1,7 @@
 package com.example.QueueSense.QueueSense.security;
 
 import com.example.QueueSense.QueueSense.entity.User;
+import com.example.QueueSense.QueueSense.repository.BlacklistedTokenRepository;
 import com.example.QueueSense.QueueSense.repository.UserRepository;
 import com.example.QueueSense.QueueSense.util.AuthUtil;
 import jakarta.servlet.FilterChain;
@@ -22,8 +23,17 @@ import java.io.IOException;
 public class JwtAuthFilter extends OncePerRequestFilter {
     private final AuthUtil authUtil;
     private final UserRepository userRepository;
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+
+        String path = request.getServletPath();
+
+        if (path.startsWith("/ws")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         log.info("incoming request: {} ",request.getRequestURI());
 
         final String requestTokenHandler=request.getHeader("Authorization");
@@ -33,6 +43,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token= requestTokenHandler.split("Bearer ")[1];
+
+        if (blacklistedTokenRepository.existsByToken(token)) {
+
+            response.sendError(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token has been revoked"
+            );
+
+            return;
+        }
         String username=authUtil.ganerateUsernameFromToken(token);
 
         if (username!=null && SecurityContextHolder.getContext().getAuthentication()==null){

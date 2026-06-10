@@ -4,6 +4,7 @@ import com.example.QueueSense.QueueSense.entity.Appointment;
 import com.example.QueueSense.QueueSense.entity.QueueEntry;
 import com.example.QueueSense.QueueSense.entity.type.QueueStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -50,10 +51,18 @@ public interface QueueRepository extends JpaRepository<QueueEntry, Long> {
             QueueStatus status
     );
 
-    List<QueueEntry> findByAppointment_IdAndStatusIn(
+    Optional<QueueEntry> findByAppointment_IdAndStatusIn(
             Long appointmentId,
             List<QueueStatus> statuses
     );
+
+
+    @Query("""
+        SELECT AVG(q.estimatedWaitTime)
+        FROM QueueEntry q
+        WHERE q.appointment.provider.id = :providerId
+        """)
+    Double getAverageWaitTime(Long providerId);
 
 
 

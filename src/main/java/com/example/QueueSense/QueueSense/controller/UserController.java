@@ -40,20 +40,35 @@ public class UserController {
         return ResponseEntity.ok(userService.getAllAppointments(user.getId()));
     }
 
+    @GetMapping("/appointment/{appointmentId}")
+    public ResponseEntity<AppointmentResponseDto> getAppointment(@PathVariable Long appointmentId){
+        User user= (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return  ResponseEntity.ok(userService.getAppointment(user.getId(),appointmentId));
+    }
+
     @GetMapping("/notification")
     public ResponseEntity<List<NotifiactionResponseDto>> getAllNotification(){
         User user= (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        System.out.println(
+                "JWT User ID = " + user.getId()
+        );
         return ResponseEntity.ok(notificationService.getAllNotification(user.getId()));
     }
 
-    @GetMapping("/wait-time/{appointmentId} ")
+    @GetMapping("/wait-time/{appointmentId}")
     public ResponseEntity<WaitTimeResponseDto> getWaitTime(@PathVariable Long appointmentId, Authentication authentication){
         User user=(User) authentication.getPrincipal();
         return ResponseEntity.ok(queueService.getWaitTime(appointmentId,user.getId()));
     }
 
     @PostMapping("/cancel-appointment")
-    public ResponseEntity<AppointmentStatusResponseDto> cancelAppointment(@PathVariable AppointmentStatusRequestDto appointmentStatusRequestDto){
+    public ResponseEntity<AppointmentStatusResponseDto> cancelAppointment(@RequestBody AppointmentStatusRequestDto appointmentStatusRequestDto){
         return ResponseEntity.ok(appointmentService.cancelAppointment(appointmentStatusRequestDto));
+    }
+
+    @GetMapping("/provider-analytics")
+    public  ResponseEntity<ProviderAnalyticsDto> getAnalytics(){
+        User user=(User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return ResponseEntity.ok(appointmentService.getAnalytics(user.getId()));
     }
 }

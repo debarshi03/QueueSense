@@ -44,7 +44,9 @@ public class ServiceProviderService {
 
         ServiceProvider serviceProvider=ServiceProvider.builder()
                 .name(onboardServiceProviderRequestDto.getName())
+                .email(onboardServiceProviderRequestDto.getEmail())
                 .averageServiceTime(onboardServiceProviderRequestDto.getAverageServiceTime())
+                .maxAppointment(onboardServiceProviderRequestDto.getMaxAppointment())
                 .user(user)
                 .build();
 

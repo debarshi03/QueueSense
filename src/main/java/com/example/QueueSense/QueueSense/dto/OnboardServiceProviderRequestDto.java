@@ -6,6 +6,8 @@ import lombok.Data;
 public class OnboardServiceProviderRequestDto {
     private Long userId;
     private String name;
+    private String email;
     private Integer averageServiceTime;
+    private Integer maxAppointment;
 
 }

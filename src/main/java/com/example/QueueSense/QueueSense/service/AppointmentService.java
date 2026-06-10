@@ -1,9 +1,6 @@
 package com.example.QueueSense.QueueSense.service;
 
-import com.example.QueueSense.QueueSense.dto.AppointmentResponseDto;
-import com.example.QueueSense.QueueSense.dto.AppointmentStatusRequestDto;
-import com.example.QueueSense.QueueSense.dto.AppointmentStatusResponseDto;
-import com.example.QueueSense.QueueSense.dto.CreateAppointmentRequestDto;
+import com.example.QueueSense.QueueSense.dto.*;
 import com.example.QueueSense.QueueSense.entity.Appointment;
 import com.example.QueueSense.QueueSense.entity.QueueEntry;
 import com.example.QueueSense.QueueSense.entity.ServiceProvider;
@@ -23,7 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.ui.ModelMap;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -37,6 +36,7 @@ public class AppointmentService {
     private final QueueService queueService;
     private final QueueRepository queueRepository;
     private final NotificationService notificationService;
+    private final EmailService emailService;
 
 
 //    public @Nullable AppointmentStatusResponseDto updateStatus(AppointmentStatusRequestDto appointmentStatusRequestDto) {
@@ -140,6 +140,12 @@ public class AppointmentService {
                         next.getAppointment().getUser(),
                         "Now it's your turn"
                 );
+
+                emailService.sendMail(
+                        next.getAppointment().getUser().getEmail(),
+                        "Appointment Update",
+                        "It's your turn now"
+                );
             }
             queueService.recalculateQueue(providerId,avgTime);
         }
@@ -204,6 +210,11 @@ public class AppointmentService {
                     appointment.getUser(),
                     "You missed your appointment (NO SHOW)"
             );
+            emailService.sendMail(
+                    appointment.getUser().getEmail(),
+                    "Appointment Update",
+                    "You missed your appointment"
+            );
         }
 
         AppointmentStatusResponseDto appointmentStatusResponseDto= new AppointmentStatusResponseDto();
@@ -224,9 +235,35 @@ public class AppointmentService {
         User user= userRepository.findById(userId).orElseThrow();
         ServiceProvider serviceProvider=serviceProviderRepository.findById(providerId).orElseThrow();
 
+        LocalDate date = LocalDateTime.now()
+                .toLocalDate();
+
+        LocalDateTime startOfDay=date.atStartOfDay();
+        LocalDateTime endOfDay=date.atTime(LocalTime.MAX);
+
+//        long totalAssignAppointment= appointmentRepository
+//                .countByProvider_IdAndAppointmentTimeBetween(
+//                        providerId,
+//                        startOfDay,
+//                        endOfDay
+//                );
+
+        long totalAssignAppointment =
+                appointmentRepository
+                        .countByProvider_IdAndAppointmentTimeBetweenAndStatusNot(
+                                providerId,
+                                startOfDay,
+                                endOfDay,
+                                AppointmentStatus.CANCELLED
+                        );
+
+        if(totalAssignAppointment>= serviceProvider.getMaxAppointment()){
+            throw new IllegalArgumentException("Today's appointment slots are full, please choose another date to book your appointment");
+        }
+
         Appointment appointment = Appointment.builder()
                 .reason(createAppointmentRequestDto.getReason())
-                .appointmentTime(createAppointmentRequestDto.getAppointmentTime())
+                .appointmentTime(LocalDateTime.now())
                 .status(AppointmentStatus.BOOKED)
                 .build();
 
@@ -242,6 +279,14 @@ public class AppointmentService {
         );
 
         queueService.addToQueue(appointment,serviceProvider.getAverageServiceTime());
+
+        queueService.recalculateQueue(providerId, serviceProvider.getAverageServiceTime());
+
+        emailService.sendMail(
+                user.getEmail(),
+                "Appointment Created",
+                "Your appointment is booked successfully"
+        );
 
         return modelMapper.map(appointment, AppointmentResponseDto.class);
 
@@ -265,7 +310,7 @@ public class AppointmentService {
         }
 
         if (oldStatus== AppointmentStatus.COMPLETED){
-            throw new IllegalArgumentException("You can't cancel your appointment because your appointment is alreadt completed");
+            throw new IllegalArgumentException("You can't cancel your appointment because your appointment is already    completed");
 
         }
 
@@ -304,6 +349,12 @@ public class AppointmentService {
                             next.getAppointment().getUser(),
                             "It's your turn now"
                     );
+
+                    emailService.sendMail(
+                            next.getAppointment().getUser().getEmail(),
+                            "Appointment Update",
+                            "It's your turn now"
+                    );
                 }
 
             }
@@ -314,6 +365,12 @@ public class AppointmentService {
                     appointment.getUser(),
                     "Your appointment is cancelled"
             );
+
+            emailService.sendMail(
+                    appointment.getUser().getEmail(),
+                    "Appointment Update",
+                    "Your appointment is cancelled"
+            );
         }
         AppointmentStatusResponseDto responseDto=new AppointmentStatusResponseDto();
         responseDto.setAppointmentId(appointment.getId());
@@ -321,6 +378,32 @@ public class AppointmentService {
         responseDto.setStatus(appointmentStatusRequestDto.getStatus());
         responseDto.setUpdatedAt(LocalDateTime.now());
         return responseDto;
+    }
+
+    public @Nullable ProviderAnalyticsDto getAnalytics(Long id) {
+        ProviderAnalyticsDto dto= new ProviderAnalyticsDto();
+
+        dto.setTotalAppointments(
+                appointmentRepository.countByProvider_Id(id)
+        );
+
+        dto.setAvgWaitTime(
+                queueRepository.getAverageWaitTime(id).intValue()
+        );
+
+        dto.setCompletedAppointments(
+                appointmentRepository.countByProvider_IdAndStatus(id,AppointmentStatus.COMPLETED)
+        );
+
+        dto.setCancelledAppointments(
+                appointmentRepository.countByProvider_IdAndStatus(id, AppointmentStatus.CANCELLED)
+        );
+
+        dto.setNoShowAppointments(
+                appointmentRepository.countByProvider_IdAndStatus(id, AppointmentStatus.NO_SHOW)
+        );
+
+        return dto;
     }
 }
 

@@ -2,6 +2,7 @@ package com.example.QueueSense.QueueSense.entity;
 
 import com.example.QueueSense.QueueSense.entity.type.ServiceType;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -23,10 +24,15 @@ public class ServiceProvider {
 
     private String name;
 
+    @Email
+    private String email;
+
     @Enumerated(EnumType.STRING)
     private ServiceType serviceType;
 
     private Integer averageServiceTime;
+
+    private Integer maxAppointment;
 
     private Boolean isAvailable;
 

@@ -3,6 +3,7 @@ package com.example.QueueSense.QueueSense.entity;
 import com.example.QueueSense.QueueSense.entity.type.AppointmentStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -32,5 +33,6 @@ public class Appointment {
     @Enumerated(EnumType.STRING)
     private AppointmentStatus status;
 
+    @CreationTimestamp
     private LocalDateTime createdAt;
 }
